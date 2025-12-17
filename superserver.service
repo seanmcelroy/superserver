@@ -1,0 +1,25 @@
+[Unit]
+Description=Super Server Internet Daemon
+After=network.target
+
+[Service]
+Type=notify
+ExecStart=/opt/superserver/superserver
+WorkingDirectory=/opt/superserver
+Restart=on-failure
+RestartSec=10
+User=superserver
+Group=superserver
+
+# Allow binding to privileged ports (below 1024)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,11 +1,12 @@
+using System.Buffers;
 using System.Globalization;
-using System.Net.Sockets;
-using System.Text;
 
 namespace SuperServer.Protocols.Daytime;
 
 public class DaytimeTcpServer : TcpServerBase
 {
+    public override string ProtocolName => "daytime";
+
     public string Culture { get; init; } = "en-US";
     public string FormatSpecifier { get; init; } = "o";
 
@@ -13,38 +14,24 @@ public class DaytimeTcpServer : TcpServerBase
 
     public override async Task Start(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(Culture))
-            _culture = CultureInfo.InvariantCulture;
-        else
-        {
-            try
-            {
-                _culture = CultureInfo.GetCultureInfo(Culture);
-            }
-            catch (CultureNotFoundException)
-            {
-                _culture = CultureInfo.InvariantCulture;
-            }
-        }
-
+        _culture = DaytimeServerBase.ParseCulture(Culture);
         await base.Start(cancellationToken);
     }
 
-    protected override async Task HandleClientAsync(NetworkStream stream, CancellationToken cancellationToken)
+    protected override async Task HandleClientAsync(Stream stream, CancellationToken cancellationToken)
     {
         stream.WriteTimeout = 30000; // 30 seconds until I timeout if the client can't acknowledge.
         if (!cancellationToken.IsCancellationRequested && stream.CanWrite)
         {
-            byte[] line;
+            var (buffer, length) = DaytimeServerBase.FormatDaytimePooled(_culture!, FormatSpecifier);
             try
             {
-                line = Encoding.ASCII.GetBytes(DateTime.UtcNow.ToString(FormatSpecifier, _culture) + "\r\n");
+                await stream.WriteAsync(buffer.AsMemory(0, length), cancellationToken);
             }
-            catch (FormatException)
+            finally
             {
-                line = Encoding.ASCII.GetBytes(DateTime.UtcNow.ToString("o", _culture) + "\r\n");
+                ArrayPool<byte>.Shared.Return(buffer);
             }
-            await stream.WriteAsync(line, cancellationToken);
         }
     }
 }

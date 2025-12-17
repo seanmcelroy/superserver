@@ -1,95 +1,58 @@
-﻿using System.Net;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using SuperServer.Configuration;
+using SuperServer.HealthChecks;
+using SuperServer.Services;
 
-internal class Program
-{
-    private static async Task Main(string[] args)
+Host.CreateDefaultBuilder(args)
+    .UseSystemd()
+    .ConfigureServices((context, services) =>
     {
-        Console.WriteLine("superserver");
+        // Bind configuration
+        services.Configure<ServerConfiguration>(
+            context.Configuration.GetSection("Servers"));
+        services.Configure<HealthCheckConfiguration>(
+            context.Configuration.GetSection("HealthCheck"));
 
-        using var echoTcp = new SuperServer.Protocols.Echo.EchoTcpServer
-        {
-            ListenAddress = IPAddress.Loopback,
-            ListenPort = 2007
-        };
-        using var echoUdp = new SuperServer.Protocols.Echo.EchoUdpServer
-        {
-            ListenAddress = IPAddress.Loopback,
-            ListenPort = 2007
-        };
-        using var discardTcp = new SuperServer.Protocols.Discard.DiscardTcpServer
-        {
-            ListenAddress = IPAddress.Loopback,
-            ListenPort = 2009
-        };
-        using var discardUdp = new SuperServer.Protocols.Discard.DiscardUdpServer
-        {
-            ListenAddress = IPAddress.Loopback,
-            ListenPort = 2009
-        };
-        using var daytimeTcp = new SuperServer.Protocols.Daytime.DaytimeTcpServer
-        {
-            ListenAddress = IPAddress.Loopback,
-            ListenPort = 2013
-        };
-        using var daytimeUdp = new SuperServer.Protocols.Daytime.DaytimeUdpServer
-        {
-            ListenAddress = IPAddress.Loopback,
-            ListenPort = 2013
-        };
-        using var chargenTcp = new SuperServer.Protocols.CharacterGenerator.CharGenTcpServer
-        {
-            ListenAddress = IPAddress.Loopback,
-            ListenPort = 2019
-        };
-        using var chargenUdp = new SuperServer.Protocols.CharacterGenerator.CharGenUdpServer
-        {
-            ListenAddress = IPAddress.Loopback,
-            ListenPort = 2019
-        };
+        var serverConfig = context.Configuration.GetSection("Servers").Get<ServerConfiguration>()
+            ?? new ServerConfiguration();
 
-        var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += new ConsoleCancelEventHandler((o,e) =>
-        {
-            cts.Cancel();
-        });
+        // Register health checks for enabled services
+        var healthChecks = services.AddHealthChecks();
 
-        try
+        if (serverConfig.Echo.Enabled)
         {
-            await Task.WhenAll(
-                echoTcp.Start(cts.Token),
-                echoUdp.Start(cts.Token),
-                discardTcp.Start(cts.Token),
-                discardUdp.Start(cts.Token),
-                daytimeTcp.Start(cts.Token),
-                daytimeUdp.Start(cts.Token),
-                chargenTcp.Start(cts.Token),
-                chargenUdp.Start(cts.Token)
-            );
+            healthChecks.AddCheck("echo-tcp",
+                new TcpHealthCheck("Echo", serverConfig.Echo.ListenAddress, serverConfig.Echo.TcpPort));
         }
-        catch (OperationCanceledException)
+        if (serverConfig.Discard.Enabled)
         {
-            // Expected on shutdown
+            healthChecks.AddCheck("discard-tcp",
+                new TcpHealthCheck("Discard", serverConfig.Discard.ListenAddress, serverConfig.Discard.TcpPort));
+        }
+        if (serverConfig.Daytime.Enabled)
+        {
+            healthChecks.AddCheck("daytime-tcp",
+                new TcpHealthCheck("Daytime", serverConfig.Daytime.ListenAddress, serverConfig.Daytime.TcpPort));
+        }
+        if (serverConfig.CharGen.Enabled)
+        {
+            healthChecks.AddCheck("chargen-tcp",
+                new TcpHealthCheck("CharGen", serverConfig.CharGen.ListenAddress, serverConfig.CharGen.TcpPort));
         }
 
-        echoTcp.Stop();
-        echoUdp.Stop();
-        discardTcp.Stop();
-        discardUdp.Stop();
-        daytimeTcp.Stop();
-        daytimeUdp.Stop();
-        chargenTcp.Stop();
-        chargenUdp.Stop();
-    }
+        // Register protocol services
+        services.AddHostedService<EchoService>();
+        services.AddHostedService<DiscardService>();
+        services.AddHostedService<DaytimeService>();
+        services.AddHostedService<CharGenService>();
 
-    /*private static byte[] BuildHeader(ushort id, bool isQuery)
-    {
-        var headerBytes = new byte[2 * 6];
-        var headerSpan = new Span<byte>(headerBytes);
-        id.TryFormat(headerSpan[..2], out int idBytesWritten);
-        BitConverter.
+        // Register health check HTTP endpoint
+        services.AddHostedService<HealthCheckHttpService>();
 
-        isQuery.TryFormat(headerSpan[16..17], out int qrBytesWritten)
-
-        return headerBytes;
-    }*/
-}
+        // Register configuration reload service (handles SIGHUP)
+        services.AddHostedService<ConfigurationReloadService>();
+    })
+    .Build()
+    .Run();

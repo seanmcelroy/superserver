@@ -4,7 +4,7 @@ namespace SuperServer.Protocols.Discard;
 
 public class DiscardUdpServer : UdpServerBase
 {
-    public int BufferLength { get; init; } = 1024;
+    public override string ProtocolName => "discard";
 
     protected override async Task ProcessLoop(UdpClient client, CancellationToken cancellationToken)
     {
@@ -12,8 +12,13 @@ public class DiscardUdpServer : UdpServerBase
         {
             do
             {
-                // Processing
-                _ = await client.ReceiveAsync(cancellationToken);
+                var recv = await client.ReceiveAsync(cancellationToken);
+                TrackBytesReceived(recv.Buffer.Length);
+                // Rate limit check still useful to prevent excessive CPU usage
+                if (IsRateLimited(recv.RemoteEndPoint.Address))
+                    continue;
+                TrackRequest();
+                // Discard protocol: data is intentionally ignored
             }
             while (!cancellationToken.IsCancellationRequested);
         }

@@ -1,11 +1,13 @@
+using System.Buffers;
 using System.Globalization;
 using System.Net.Sockets;
-using System.Text;
 
 namespace SuperServer.Protocols.Daytime;
 
 public class DaytimeUdpServer : UdpServerBase
 {
+    public override string ProtocolName => "daytime";
+
     public string Culture { get; init; } = "en-US";
     public string FormatSpecifier { get; init; } = "o";
 
@@ -13,20 +15,7 @@ public class DaytimeUdpServer : UdpServerBase
 
     public override async Task Start(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(Culture))
-            _culture = CultureInfo.InvariantCulture;
-        else
-        {
-            try
-            {
-                _culture = CultureInfo.GetCultureInfo(Culture);
-            }
-            catch (CultureNotFoundException)
-            {
-                _culture = CultureInfo.InvariantCulture;
-            }
-        }
-
+        _culture = DaytimeServerBase.ParseCulture(Culture);
         await base.Start(cancellationToken);
     }
 
@@ -36,25 +25,24 @@ public class DaytimeUdpServer : UdpServerBase
         {
             do
             {
-                // Processing
                 var recv = await client.ReceiveAsync(cancellationToken);
-
-                // Create daytime datagram (recv contents are discarded)
-                byte[] line;
+                TrackBytesReceived(recv.Buffer.Length);
+                if (IsRateLimited(recv.RemoteEndPoint.Address))
+                    continue;
+                TrackRequest();
+                var (buffer, length) = DaytimeServerBase.FormatDaytimePooled(_culture!, FormatSpecifier);
                 try
                 {
-                    line = Encoding.ASCII.GetBytes(DateTime.UtcNow.ToString(FormatSpecifier, _culture) + "\r\n");
+                    await client.SendAsync(buffer.AsMemory(0, length), recv.RemoteEndPoint, cancellationToken);
+                    TrackBytesSent(length);
                 }
-                catch (FormatException)
+                finally
                 {
-                    line = Encoding.ASCII.GetBytes(DateTime.UtcNow.ToString("o", _culture) + "\r\n");
+                    ArrayPool<byte>.Shared.Return(buffer);
                 }
-
-                // Send generated characters
-                await client.SendAsync(line, recv.RemoteEndPoint, cancellationToken);
             } while (!cancellationToken.IsCancellationRequested);
         }
         catch (OperationCanceledException) { }
-        catch (IOException) { } // Client disconnected unexpectedly
+        catch (IOException) { }
     }
 }

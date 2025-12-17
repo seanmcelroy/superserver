@@ -1,12 +1,12 @@
-using System.Net.Sockets;
-
 namespace SuperServer.Protocols.CharacterGenerator;
 
 public class CharGenTcpServer : TcpServerBase
 {
+    public override string ProtocolName => "chargen";
+
     public ulong? MaximumLines { get; init; }
 
-    protected override async Task HandleClientAsync(NetworkStream stream, CancellationToken cancellationToken)
+    protected override async Task HandleClientAsync(Stream stream, CancellationToken cancellationToken)
     {
         stream.WriteTimeout = 30000; // 30 seconds until I timeout if the client can't acknowledge.
         ulong n = 0;
