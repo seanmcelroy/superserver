@@ -9,8 +9,10 @@ This is a simple inetd-style project that implements several RFCs from the early
 * RFC 864 - Character Generator Protocol - tcp/2019 (instead of tcp/19) and udp/2019 (instead of udp/19)
 * RFC 867 - Daytime Protocol             - tcp/2013 (instead of tcp/13) and udp/2013 (instead of udp/13)
 
-But gold-plated beyond belief, with systemd unit files, SIGHUP configuration reload support, health checks,
-and Prometheus metrics.
+
+superserver is spiritually similar to inetd/xinetd but architecturally quite different. Rather than being a generic process launcher, it's a monolithic daemon with protocols implemented directly in code. This gives it better observability and efficiency (no fork overhead) but loses the flexibility of running arbitrary external programs. It's essentially what you'd get if you reimagined inetd for the modern cloud-native era with Prometheus, health checks, and async I/O - but scoped to a handful of toy protocols.       
+
+It is gold-plated beyond belief, with systemd unit files, SIGHUP configuration reload support, health checks, and Prometheus metrics.
 
 ## Security notice
 
