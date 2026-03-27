@@ -48,7 +48,8 @@ public class HealthCheckHttpService : BackgroundService
         }
         catch (HttpListenerException ex)
         {
-            _logger.LogError(ex, "Failed to start health check HTTP listener: {Message}", ex.Message);
+            _logger.LogError(ex, "Failed to start health check HTTP listener on {Address}:{Port}",
+                _config.ListenAddress, _config.Port);
             return;
         }
 
@@ -65,7 +66,7 @@ public class HealthCheckHttpService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Error handling health check request: {Message}", ex.Message);
+                _logger.LogWarning(ex, "Error accepting health check request");
             }
         }
 
@@ -116,7 +117,7 @@ public class HealthCheckHttpService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing health check request");
+            _logger.LogError(ex, "Error processing health check request for {Path}", request.Url?.AbsolutePath);
             response.StatusCode = 500;
         }
         finally

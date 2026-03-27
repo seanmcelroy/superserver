@@ -35,6 +35,41 @@ dotnet build
 dotnet run
 ```
 
+## Deployment (Container)
+
+### Building
+
+```bash
+podman build -t superserver -f Containerfile .
+```
+
+### Running
+
+```bash
+podman run -d --name superserver \
+  -p 2007:2007 \
+  -p 2009:2009 \
+  -p 2013:2013 \
+  -p 2019:2019 \
+  -p 8080:8080 \
+  superserver
+```
+
+To provide a custom configuration, mount an `appsettings.json` into the container:
+
+```bash
+podman run -d --name superserver \
+  -v ./appsettings.json:/app/appsettings.json:ro \
+  -p 2007:2007 \
+  -p 2009:2009 \
+  -p 2013:2013 \
+  -p 2019:2019 \
+  -p 8080:8080 \
+  superserver
+```
+
+Note: When running in a container, set `ListenAddress` to `0.0.0.0` in `appsettings.json` so the services are reachable via the published ports.
+
 ## Deployment (Linux systemd)
 
 ### Installation

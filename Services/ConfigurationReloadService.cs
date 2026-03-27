@@ -64,7 +64,7 @@ public class ConfigurationReloadService : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to reload configuration: {Message}", ex.Message);
+            _logger.LogError(ex, "Failed to reload configuration");
         }
 
         // Prevent the default signal handling (process termination)

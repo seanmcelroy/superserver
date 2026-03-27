@@ -36,6 +36,13 @@ public abstract class TcpServerBase : IDisposable
 
     public virtual async Task Start(CancellationToken cancellationToken)
     {
+        using var scope = Logger?.BeginScope(new Dictionary<string, object>
+        {
+            ["Protocol"] = ProtocolName,
+            ["Transport"] = "tcp",
+            ["ListenEndpoint"] = $"{ListenAddress}:{ListenPort}"
+        });
+
         try
         {
             _listener = new TcpListener(ListenAddress, ListenPort);
@@ -44,19 +51,19 @@ public abstract class TcpServerBase : IDisposable
             if (TcpMaxConnections.HasValue)
             {
                 _connectionSemaphore = new SemaphoreSlim(TcpMaxConnections.Value, TcpMaxConnections.Value);
-                Logger?.LogDebug("TCP listener started on {Address}:{Port} (max {MaxConnections} connections)",
-                    ListenAddress, ListenPort, TcpMaxConnections.Value);
+                Logger?.LogDebug("{Protocol} TCP listener started on {Address}:{Port} (max {MaxConnections} connections)",
+                    ProtocolName, ListenAddress, ListenPort, TcpMaxConnections.Value);
             }
             else
             {
-                Logger?.LogDebug("TCP listener started on {Address}:{Port} (unlimited connections)",
-                    ListenAddress, ListenPort);
+                Logger?.LogDebug("{Protocol} TCP listener started on {Address}:{Port} (unlimited connections)",
+                    ProtocolName, ListenAddress, ListenPort);
             }
         }
         catch (SocketException ex)
         {
-            Logger?.LogError(ex, "Failed to start TCP listener on {Address}:{Port}: {Message}",
-                ListenAddress, ListenPort, ex.Message);
+            Logger?.LogError(ex, "{Protocol} failed to start TCP listener on {Address}:{Port}",
+                ProtocolName, ListenAddress, ListenPort);
             throw;
         }
 
@@ -91,7 +98,7 @@ public abstract class TcpServerBase : IDisposable
             }
             catch (SocketException ex) when (!cancellationToken.IsCancellationRequested)
             {
-                Logger?.LogWarning(ex, "Socket error accepting connection: {Message}", ex.Message);
+                Logger?.LogWarning(ex, "{Protocol} socket error accepting TCP connection", ProtocolName);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -104,7 +111,15 @@ public abstract class TcpServerBase : IDisposable
     private async Task HandleClientWithLoggingAsync(TcpClient client, CancellationToken cancellationToken)
     {
         var remoteEndPoint = client.Client.RemoteEndPoint?.ToString() ?? "unknown";
-        Logger?.LogDebug("TCP connection accepted from {RemoteEndPoint}", remoteEndPoint);
+
+        using var connectionScope = Logger?.BeginScope(new Dictionary<string, object>
+        {
+            ["Protocol"] = ProtocolName,
+            ["Transport"] = "tcp",
+            ["RemoteEndPoint"] = remoteEndPoint
+        });
+
+        Logger?.LogDebug("{Protocol} TCP connection accepted from {RemoteEndPoint}", ProtocolName, remoteEndPoint);
 
         // Track metrics
         ServerMetrics.ConnectionsTotal.WithLabels(ProtocolName).Inc();
@@ -131,27 +146,21 @@ public abstract class TcpServerBase : IDisposable
         {
             timedOut = true;
             ServerMetrics.IdleTimeoutsTotal.WithLabels(ProtocolName).Inc();
-            Logger?.LogDebug("TCP connection from {RemoteEndPoint} closed due to idle timeout ({Timeout}s)",
-                remoteEndPoint, IdleTimeoutSeconds);
+            Logger?.LogDebug("{Protocol} TCP connection from {RemoteEndPoint} idle timeout after {TimeoutSeconds}s",
+                ProtocolName, remoteEndPoint, IdleTimeoutSeconds);
         }
         catch (IOException) { }
         catch (Exception ex)
         {
             ServerMetrics.ErrorsTotal.WithLabels(ProtocolName, "tcp").Inc();
-            Logger?.LogError(ex, "Unhandled exception handling client {RemoteEndPoint}: {Message}",
-                remoteEndPoint, ex.Message);
+            Logger?.LogError(ex, "{Protocol} unhandled exception for TCP client {RemoteEndPoint}",
+                ProtocolName, remoteEndPoint);
         }
         finally
         {
             ServerMetrics.ConnectionsActive.WithLabels(ProtocolName).Dec();
-            if (timedOut)
-            {
-                Logger?.LogDebug("TCP connection closed from {RemoteEndPoint} (idle timeout)", remoteEndPoint);
-            }
-            else
-            {
-                Logger?.LogDebug("TCP connection closed from {RemoteEndPoint}", remoteEndPoint);
-            }
+            Logger?.LogDebug("{Protocol} TCP connection closed from {RemoteEndPoint}{Reason}",
+                ProtocolName, remoteEndPoint, timedOut ? " (idle timeout)" : "");
             client.Dispose();
             _connectionSemaphore?.Release();
         }
@@ -163,7 +172,7 @@ public abstract class TcpServerBase : IDisposable
     {
         _listener?.Stop();
         _listener = null;
-        Logger?.LogDebug("TCP listener stopped");
+        Logger?.LogDebug("{Protocol} TCP listener stopped", ProtocolName);
     }
 
     protected virtual void Dispose(bool disposing)

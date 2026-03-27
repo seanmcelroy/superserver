@@ -52,15 +52,23 @@ public abstract class UdpServerBase : IDisposable
 
     public virtual async Task Start(CancellationToken cancellationToken)
     {
+        using var scope = Logger?.BeginScope(new Dictionary<string, object>
+        {
+            ["Protocol"] = ProtocolName,
+            ["Transport"] = "udp",
+            ["ListenEndpoint"] = $"{ListenAddress}:{ListenPort}"
+        });
+
         try
         {
             _client = new UdpClient(new IPEndPoint(ListenAddress, ListenPort));
-            Logger?.LogDebug("UDP listener started on {Address}:{Port}", ListenAddress, ListenPort);
+            Logger?.LogDebug("{Protocol} UDP listener started on {Address}:{Port}",
+                ProtocolName, ListenAddress, ListenPort);
         }
         catch (SocketException ex)
         {
-            Logger?.LogError(ex, "Failed to start UDP listener on {Address}:{Port}: {Message}",
-                ListenAddress, ListenPort, ex.Message);
+            Logger?.LogError(ex, "{Protocol} failed to start UDP listener on {Address}:{Port}",
+                ProtocolName, ListenAddress, ListenPort);
             throw;
         }
 
@@ -123,8 +131,8 @@ public abstract class UdpServerBase : IDisposable
             if (entry.RequestCount > maxRequests)
             {
                 ServerMetrics.RateLimitedTotal.WithLabels(ProtocolName, "udp").Inc();
-                Logger?.LogWarning("Rate limit exceeded for {RemoteAddress}: {Count} requests in {Window}s (max: {Max})",
-                    remoteAddress, entry.RequestCount, rateLimitWindowSeconds, maxRequests);
+                Logger?.LogWarning("{Protocol} UDP rate limit exceeded for {RemoteAddress}: {RequestCount} requests in {WindowSeconds}s (max {MaxRequests})",
+                    ProtocolName, remoteAddress, entry.RequestCount, rateLimitWindowSeconds, maxRequests);
                 return true;
             }
 
@@ -147,7 +155,7 @@ public abstract class UdpServerBase : IDisposable
 
         if (staleKeys.Count > 0)
         {
-            Logger?.LogDebug("Cleaned up {Count} stale rate limit entries", staleKeys.Count);
+            Logger?.LogDebug("{Protocol} cleaned up {Count} stale UDP rate limit entries", ProtocolName, staleKeys.Count);
         }
     }
 
@@ -194,7 +202,7 @@ public abstract class UdpServerBase : IDisposable
         _client?.Close();
         _client = null;
         _rateLimitEntries.Clear();
-        Logger?.LogDebug("UDP listener stopped");
+        Logger?.LogDebug("{Protocol} UDP listener stopped", ProtocolName);
     }
 
     protected virtual void Dispose(bool disposing)
